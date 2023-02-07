@@ -6,7 +6,7 @@ Tsuki is a wayland compositor written in rust, there is still much to be done be
 TODO: 
 - [x] create winit backend
 - [ ] create udev backend
-- [ ] implements copy & paste
+- [x] implements copy & paste
 - [ ] implements tiling functionality
 - [ ] add hardware acceleration
 - [ ] so much more
