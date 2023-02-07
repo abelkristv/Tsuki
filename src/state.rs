@@ -23,7 +23,7 @@ use smithay::{
                 wl_surface::WlSurface,
                 wl_output
             },
-            Display
+            Display, DisplayHandle
         }
     },
     utils::{Logical, Point},
@@ -33,11 +33,14 @@ use smithay::{
         output::OutputManagerState,
         shell::xdg::XdgShellState,
         socket::ListeningSocketSource,
-        shm::ShmState
+        shm::ShmState,
+        primary_selection::PrimarySelectionState
     }
 };
 
 pub struct Tsuki {
+    pub display_handle: DisplayHandle,
+    
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
     pub log: slog::Logger,
@@ -52,7 +55,9 @@ pub struct Tsuki {
     pub seat_state: SeatState<Tsuki>,
     pub data_device_state: DataDeviceState,
 
-    pub seat: Seat<Self>
+    pub seat: Seat<Self>,
+
+    pub primary_selection_state: PrimarySelectionState
 }
 
 impl Tsuki {
@@ -66,6 +71,7 @@ impl Tsuki {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Self, _>(&dh, log.clone());
+        let primary_selection_state = PrimarySelectionState::new::<Self, _>(&dh, log.clone());
 
         // A seat is a group of keyboards, pointer, and touch device 
         // A seat typically has a pointer and mantains a keyboard focus and a pointer focus
@@ -89,9 +95,13 @@ impl Tsuki {
         // Get the loop signal, used to stop the event loop
         let loop_signal = event_loop.get_signal();
 
+
         let socket_name = Self::init_wayland_listener(display, event_loop, log.clone());
 
+
         Self {
+            display_handle: dh,
+            
             space,
             loop_signal,
             log,
@@ -106,7 +116,9 @@ impl Tsuki {
             seat_state,
             data_device_state,
 
-            seat
+            seat,
+
+            primary_selection_state
         }
     }
 
