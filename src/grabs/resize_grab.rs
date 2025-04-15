@@ -1,4 +1,4 @@
-use crate::Smallvil;
+use crate::Tsuki;
 use smithay::{
     desktop::{Space, Window},
     input::pointer::{
@@ -39,7 +39,7 @@ impl From<xdg_toplevel::ResizeEdge> for ResizeEdge {
 }
 
 pub struct ResizeSurfaceGrab {
-    start_data: PointerGrabStartData<Smallvil>,
+    start_data: PointerGrabStartData<Tsuki>,
     window: Window,
 
     edges: ResizeEdge,
@@ -50,7 +50,7 @@ pub struct ResizeSurfaceGrab {
 
 impl ResizeSurfaceGrab {
     pub fn start(
-        start_data: PointerGrabStartData<Smallvil>,
+        start_data: PointerGrabStartData<Tsuki>,
         window: Window,
         edges: ResizeEdge,
         initial_window_rect: Rectangle<i32, Logical>,
@@ -71,11 +71,11 @@ impl ResizeSurfaceGrab {
     }
 }
 
-impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
+impl PointerGrab<Tsuki> for ResizeSurfaceGrab {
     fn motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -132,8 +132,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -142,8 +142,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -175,21 +175,21 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn frame(&mut self, data: &mut Smallvil, handle: &mut PointerInnerHandle<'_, Smallvil>) {
+    fn frame(&mut self, data: &mut Tsuki, handle: &mut PointerInnerHandle<'_, Tsuki>) {
         handle.frame(data);
     }
 
     fn gesture_swipe_begin(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GestureSwipeBeginEvent,
     ) {
         handle.gesture_swipe_begin(data, event)
@@ -197,8 +197,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_swipe_update(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GestureSwipeUpdateEvent,
     ) {
         handle.gesture_swipe_update(data, event)
@@ -206,8 +206,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_swipe_end(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GestureSwipeEndEvent,
     ) {
         handle.gesture_swipe_end(data, event)
@@ -215,8 +215,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_pinch_begin(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GesturePinchBeginEvent,
     ) {
         handle.gesture_pinch_begin(data, event)
@@ -224,8 +224,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_pinch_update(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GesturePinchUpdateEvent,
     ) {
         handle.gesture_pinch_update(data, event)
@@ -233,8 +233,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_pinch_end(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GesturePinchEndEvent,
     ) {
         handle.gesture_pinch_end(data, event)
@@ -242,8 +242,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_hold_begin(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GestureHoldBeginEvent,
     ) {
         handle.gesture_hold_begin(data, event)
@@ -251,18 +251,18 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn gesture_hold_end(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut Tsuki,
+        handle: &mut PointerInnerHandle<'_, Tsuki>,
         event: &GestureHoldEndEvent,
     ) {
         handle.gesture_hold_end(data, event)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Smallvil> {
+    fn start_data(&self) -> &PointerGrabStartData<Tsuki> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut Smallvil) {}
+    fn unset(&mut self, _data: &mut Tsuki) {}
 }
 
 /// State of the resize operation.

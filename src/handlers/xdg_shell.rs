@@ -24,10 +24,10 @@ use smithay::{
 
 use crate::{
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
-    Smallvil,
+    Tsuki,
 };
 
-impl XdgShellHandler for Smallvil {
+impl XdgShellHandler for Tsuki {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -124,13 +124,13 @@ impl XdgShellHandler for Smallvil {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(Smallvil);
+delegate_xdg_shell!(Tsuki);
 
 fn check_grab(
-    seat: &Seat<Smallvil>,
+    seat: &Seat<Tsuki>,
     surface: &WlSurface,
     serial: Serial,
-) -> Option<PointerGrabStartData<Smallvil>> {
+) -> Option<PointerGrabStartData<Tsuki>> {
     let pointer = seat.get_pointer()?;
 
     // Check that this surface has a click grab.
@@ -188,7 +188,7 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
     }
 }
 
-impl Smallvil {
+impl Tsuki {
     fn unconstrain_popup(&self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;

@@ -11,10 +11,10 @@ use smithay::reexports::{
     calloop::EventLoop,
     wayland_server::{Display, DisplayHandle},
 };
-pub use state::Smallvil;
+pub use state::Tsuki;
 
 pub struct CalloopData {
-    state: Smallvil,
+    state: Tsuki,
     display_handle: DisplayHandle,
 }
 
@@ -27,9 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
 
-    let display: Display<Smallvil> = Display::new()?;
+    let display: Display<Tsuki> = Display::new()?;
     let display_handle = display.handle();
-    let state = Smallvil::new(&mut event_loop, display);
+    let state = Tsuki::new(&mut event_loop, display);
 
     let mut data = CalloopData {
         state,

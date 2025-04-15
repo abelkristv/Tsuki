@@ -12,7 +12,7 @@ use smithay::{
     utils::{Rectangle, Transform},
 };
 
-use crate::{CalloopData, Smallvil};
+use crate::{CalloopData, state::Tsuki};
 
 pub fn init_winit(
     event_loop: &mut EventLoop<CalloopData>,
@@ -37,7 +37,7 @@ pub fn init_winit(
             model: "Winit".into(),
         },
     );
-    let _global = output.create_global::<Smallvil>(display_handle);
+    let _global = output.create_global::<Tsuki>(display_handle);
     output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
     output.set_preferred(mode);
 
