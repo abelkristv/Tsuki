@@ -4,7 +4,7 @@ use smithay::{
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     input::{
-        keyboard::FilterResult,
+        keyboard::{keysyms, FilterResult, Keysym},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -13,6 +13,10 @@ use smithay::{
 
 use crate::state::Tsuki;
 
+enum TsukiInputAction {
+    Quit,
+}
+
 impl Tsuki {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
@@ -20,14 +24,27 @@ impl Tsuki {
                 let serial = SERIAL_COUNTER.next_serial();
                 let time = Event::time_msec(&event);
 
-                self.seat.get_keyboard().unwrap().input::<(), _>(
+                let action = self.seat.get_keyboard().unwrap().input::<TsukiInputAction, _>(
                     self,
                     event.key_code(),
                     event.state(),
                     serial,
                     time,
-                    |_, _, _| FilterResult::Forward,
+                    |_, modifier_state, keysym| match keysym.modified_sym() {
+                        Keysym::Escape if modifier_state.ctrl && modifier_state.shift => {
+                            FilterResult::Intercept(TsukiInputAction::Quit)
+                        },
+                        _ => FilterResult::Forward,
+                    } 
                 );
+
+                if let Some(action) = action {
+                    match action {
+                        TsukiInputAction::Quit => {
+                            self.loop_signal.stop()
+                        }
+                    }
+                }
             }
             InputEvent::PointerMotion { .. } => {}
             InputEvent::PointerMotionAbsolute { event, .. } => {
