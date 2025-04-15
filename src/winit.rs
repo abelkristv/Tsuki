@@ -39,7 +39,7 @@ impl Backend for Winit {
         let size = self.backend.window_size();
         let damage = Rectangle::new(Point::from((0, 0)), size);
         self.damage_tracker
-            .render_output(self.backend.renderer(), 0, elements, [0.1, 0.2, 0.1, 1.0])
+            .render_output(self.backend.renderer(), 0, elements, [0.0, 0.0, 0.0, 1.0])
             .unwrap();
         self.backend.submit(Some(&[damage])).unwrap()
     }
@@ -111,6 +111,7 @@ impl Winit {
                         None, 
                     None);
                 },
+                WinitEvent::CloseRequested => {tsuki.loop_signal.stop();}, 
                 WinitEvent::Input(event) => tsuki.process_input_event(event),
                 _ => ()
             });

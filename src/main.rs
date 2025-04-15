@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match (flag.as_deref(), arg) {
         (Some("-c") | Some("--command"), Some(command)) => {
-            std::process::Command::new(command).spawn().ok();
+            std::process::Command::new(command).env("WAYLAND_DISPLAY", "wayland-0").spawn().ok();
         }
         _ => {
             std::process::Command::new("weston-terminal").spawn().ok();
