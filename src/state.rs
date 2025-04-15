@@ -1,28 +1,24 @@
-use std::{ffi::OsString, sync::Arc};
+use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, ffi::OsString, os::fd::AsFd, rc::Rc, sync::Arc, time::Duration};
 
 use smithay::{
-    desktop::{PopupManager, Space, Window, WindowSurfaceType},
-    input::{Seat, SeatState},
-    reexports::{
+    backend, desktop::{space::space_render_elements, PopupManager, Space, Window, WindowSurfaceType}, input::{Seat, SeatState}, output::Output, reexports::{
         calloop::{generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
             Display, DisplayHandle,
         },
-    },
-    utils::{Logical, Point},
-    wayland::{
+    }, utils::{Logical, Point}, wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::xdg::XdgShellState,
         shm::ShmState,
         socket::ListeningSocketSource,
-    },
+    }
 };
 
-use crate::CalloopData;
+use crate::{backend::Backend, CalloopData};
 
 pub struct Tsuki {
     pub start_time: std::time::Instant,
@@ -42,6 +38,7 @@ pub struct Tsuki {
     pub popups: PopupManager,
 
     pub seat: Seat<Self>,
+    pub output: Option<Output>
 }
 
 impl Tsuki {
@@ -97,6 +94,7 @@ impl Tsuki {
             data_device_state,
             popups,
             seat,
+            output: None
         }
     }
 
@@ -130,9 +128,8 @@ impl Tsuki {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
-                    // Safety: we don't drop the display
                     unsafe {
-                        display.get_mut().dispatch_clients(&mut state.state).unwrap();
+                        display.get_mut().dispatch_clients(&mut state.tsuki).unwrap();
                     }
                     Ok(PostAction::Continue)
                 },
@@ -140,6 +137,28 @@ impl Tsuki {
             .unwrap();
 
         socket_name
+    }
+
+    pub fn redraw(&mut self, backend: &mut dyn Backend) {
+        let elements = space_render_elements(
+            backend.renderer(), 
+            [&self.space], 
+            self.output.as_ref().unwrap(), 
+        1.0
+        ).unwrap();
+
+        backend.render(self, &elements);
+
+        let output = self.output.as_ref().unwrap();
+        self.space.elements().for_each(|window| {
+            window.send_frame(
+                output, 
+                self.start_time.elapsed(),
+                Some(Duration::ZERO),
+                |_, _| Some(output.clone()));
+        });
+
+        self.space.refresh();
     }
 
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {

@@ -5,105 +5,122 @@ use smithay::{
         renderer::{
             damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement, gles::GlesRenderer,
         },
-        winit::{self, WinitEvent},
+        winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::calloop::EventLoop,
-    utils::{Rectangle, Transform},
+    reexports::{calloop::{timer::Timer, EventLoop, LoopHandle}, winit::platform::pump_events::PumpStatus},
+    utils::{Point, Rectangle, Transform},
 };
 
-use crate::{CalloopData, state::Tsuki};
+use crate::{backend::Backend, state::Tsuki, CalloopData};
 
-pub fn init_winit(
-    event_loop: &mut EventLoop<CalloopData>,
-    data: &mut CalloopData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let display_handle = &mut data.display_handle;
-    let state = &mut data.state;
+pub struct Winit {
+    output: Output,
+    backend: WinitGraphicsBackend<GlesRenderer>,
+    winit_event_loop: WinitEventLoop,
+    damage_tracker: OutputDamageTracker
+}
 
-    let (mut backend, winit) = winit::init()?;
+impl Backend for Winit {
+    fn set_name(&self) -> String {
+        "winit".to_owned()
+    }
 
-    let mode = Mode {
-        size: backend.window_size(),
-        refresh: 60_000,
-    };
+    fn renderer(&mut self) -> &mut GlesRenderer {
+       self.backend.renderer()
+    }
 
-    let output = Output::new(
-        "winit".to_string(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Smithay".into(),
-            model: "Winit".into(),
-        },
-    );
-    let _global = output.create_global::<Tsuki>(display_handle);
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
-    output.set_preferred(mode);
+    fn render(
+        &mut self,
+        tsuki: &mut Tsuki,
+        elements: &[smithay::desktop::space::SpaceRenderElements<GlesRenderer,
+            WaylandSurfaceRenderElement<GlesRenderer>>]
+    ) {
+        let size = self.backend.window_size();
+        let damage = Rectangle::new(Point::from((0, 0)), size);
+        self.damage_tracker
+            .render_output(self.backend.renderer(), 0, elements, [0.1, 0.2, 0.1, 1.0])
+            .unwrap();
+        self.backend.submit(Some(&[damage])).unwrap()
+    }
+}
 
-    state.space.map_output(&output, (0, 0));
+impl Winit {
+    pub fn new(event_loop: LoopHandle<CalloopData>) -> Self {
+        let (backend, winit_event_loop) = winit::init().unwrap();
 
-    let mut damage_tracker = OutputDamageTracker::from_output(&output);
-
-    std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
-
-    event_loop.handle().insert_source(winit, move |event, _, data| {
-        let display = &mut data.display_handle;
-        let state = &mut data.state;
-
-        match event {
-            WinitEvent::Resized { size, .. } => {
-                output.change_current_state(
-                    Some(Mode {
-                        size,
-                        refresh: 60_000,
-                    }),
-                    None,
-                    None,
-                    None,
-                );
-            }
-            WinitEvent::Input(event) => state.process_input_event(event),
-            WinitEvent::Redraw => {
-                let size = backend.window_size();
-                let damage = Rectangle::from_size(size);
-
-                backend.bind().unwrap();
-                smithay::desktop::space::render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
-                    &output,
-                    backend.renderer(),
-                    1.0,
-                    0,
-                    [&state.space],
-                    &[],
-                    &mut damage_tracker,
-                    [0.1, 0.1, 0.1, 1.0],
-                )
-                .unwrap();
-                backend.submit(Some(&[damage])).unwrap();
-
-                state.space.elements().for_each(|window| {
-                    window.send_frame(
-                        &output,
-                        state.start_time.elapsed(),
-                        Some(Duration::ZERO),
-                        |_, _| Some(output.clone()),
-                    )
-                });
-
-                state.space.refresh();
-                state.popups.cleanup();
-                let _ = display.flush_clients();
-
-                // Ask for redraw to schedule new frame.
-                backend.window().request_redraw();
-            }
-            WinitEvent::CloseRequested => {
-                state.loop_signal.stop();
-            }
-            _ => (),
+        let mode = Mode {
+            size: backend.window_size(),
+            refresh: 60_000
         };
-    })?;
 
-    Ok(())
+        let output = Output::new(
+            "winit".to_string(),
+            PhysicalProperties { 
+                size: (0,0).into(),
+                subpixel: Subpixel::Unknown, 
+                make: "Smithay".into(), 
+                model: "Winit".into() }
+        );
+
+        output.change_current_state(
+            Some(mode), 
+            Some(Transform::Flipped180),
+            None, 
+            Some((0, 0).into())
+        );
+
+        output.set_preferred(mode);
+
+        let damage_tracker = OutputDamageTracker::from_output(&output);
+
+        let timer = Timer::immediate();
+
+        event_loop
+            .insert_source(timer, move |_, _, data| {
+                let winit = data.winit.as_mut().unwrap();
+                winit.dispatch(&mut data.tsuki);
+                smithay::reexports::calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16))
+            }).unwrap();
+        
+        Self {
+            output,
+            backend,
+            winit_event_loop,
+            damage_tracker
+        }
+    }
+
+    pub fn init(&mut self, tsuki: &mut Tsuki) {
+        let _global = self.output.create_global::<Tsuki>(&tsuki.display_handle);
+            tsuki.space.map_output(&self.output, (0, 0));
+            tsuki.output = Some(self.output.clone());
+    }
+
+    fn dispatch(&mut self, tsuki: &mut Tsuki) {
+        let res = self
+            .winit_event_loop
+            .dispatch_new_events(|event| match event {
+                WinitEvent::Resized { size, scale_factor } => {
+                    tsuki.output.as_ref().unwrap().change_current_state(
+                        Some(Mode {
+                            size,
+                            refresh: 60_000
+                        }), 
+                        None, 
+                        None, 
+                    None);
+                },
+                WinitEvent::Input(event) => tsuki.process_input_event(event),
+                _ => ()
+            });
+        
+        if let PumpStatus::Exit(val)= res {
+            tsuki.loop_signal.stop();
+            return;
+        } 
+
+        self.backend.bind().unwrap();
+        tsuki.redraw(self);
+    }
 }

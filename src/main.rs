@@ -6,16 +6,21 @@ mod grabs;
 mod input;
 mod state;
 mod winit;
+mod backend;
+
+use std::{cell::RefCell, rc::Rc};
 
 use smithay::reexports::{
     calloop::EventLoop,
     wayland_server::{Display, DisplayHandle},
 };
 pub use state::Tsuki;
+use winit::Winit;
 
 pub struct CalloopData {
-    state: Tsuki,
+    tsuki: Tsuki,
     display_handle: DisplayHandle,
+    winit: Option<Winit>
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,16 +32,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
 
-    let display: Display<Tsuki> = Display::new()?;
+
+    let display = Display::new().unwrap();
     let display_handle = display.handle();
     let state = Tsuki::new(&mut event_loop, display);
 
+    let winit = Some(Winit::new(event_loop.handle()));
+
     let mut data = CalloopData {
-        state,
+        tsuki: state,
         display_handle,
+        winit
     };
 
-    crate::winit::init_winit(&mut event_loop, &mut data)?;
+    if let Some(winit) = data.winit.as_mut() {
+        winit.init(&mut data.tsuki);
+    }
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
