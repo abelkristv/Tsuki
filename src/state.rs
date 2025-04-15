@@ -103,7 +103,8 @@ impl Tsuki {
         event_loop: &mut EventLoop<CalloopData>,
     ) -> OsString {
         // Creates a new listening socket, automatically choosing the next available `wayland` socket name.
-        let listening_socket = ListeningSocketSource::new_auto().unwrap();
+        let listening_socket = ListeningSocketSource::with_name("wayland-1").unwrap();
+        println!("{:?}", listening_socket.socket_name());
 
         // Get the name of the listening socket.
         // Clients will connect to this socket.

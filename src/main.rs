@@ -52,18 +52,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let flag = args.next();
     let arg = args.next();
+    std::env::set_var("WAYLAND_DISPLAY", "wayland-1");
+
 
     match (flag.as_deref(), arg) {
         (Some("-c") | Some("--command"), Some(command)) => {
-            std::process::Command::new(command).env("WAYLAND_DISPLAY", "wayland-0").spawn().ok();
+            std::process::Command::new(command).spawn().ok();
         }
         _ => {
             std::process::Command::new("weston-terminal").spawn().ok();
         }
     }
 
-    event_loop.run(None, &mut data, move |_| {
-        // Smallvil is running
+    event_loop.run(None, &mut data, move |data| {
+        // Tsuki is running
+        data.display_handle.flush_clients().unwrap();
     })?;
 
     Ok(())
