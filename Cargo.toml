@@ -1,0 +1,9 @@
+[package]
+name = "tsuki"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2.9.0"
+smithay = "0.5.1"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
