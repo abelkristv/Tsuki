@@ -118,6 +118,10 @@ impl XdgShellHandler for Tsuki {
         }
     }
 
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        
+    }
+
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         // TODO popup grabs
     }

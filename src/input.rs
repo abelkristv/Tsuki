@@ -31,7 +31,7 @@ impl Tsuki {
                     serial,
                     time,
                     |_, modifier_state, keysym| match keysym.modified_sym() {
-                        Keysym::Escape if modifier_state.ctrl && modifier_state.shift => {
+                        Keysym::Q if modifier_state.ctrl && modifier_state.shift => {
                             FilterResult::Intercept(TsukiInputAction::Quit)
                         },
                         _ => FilterResult::Forward,
