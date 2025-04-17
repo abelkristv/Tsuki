@@ -22,7 +22,7 @@ pub struct Winit {
 }
 
 impl Backend for Winit {
-    fn set_name(&self) -> String {
+    fn seat_name(&self) -> String {
         "winit".to_owned()
     }
 

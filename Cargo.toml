@@ -4,6 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.98"
 bitflags = "2.9.0"
-smithay = "0.5.1"
+nix = {version = "0.29.0", features = ["fs"]}
+smithay = { version = "0.5.1", features = [
+    "backend_session",
+    "backend_session_libseat",
+    "wayland_frontend",
+    "backend_gbm", 
+    "renderer_gl",
+    "backend_drm",
+    "backend_udev",
+    "backend_egl",
+    "use_system_lib"
+]}
+smithay-drm-extras = "0.1.0"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

@@ -3,7 +3,7 @@ use smithay::{backend::renderer::{element::surface::WaylandSurfaceRenderElement,
 use crate::Tsuki;
 
 pub trait Backend {
-    fn set_name(&self) -> String;
+    fn seat_name(&self) -> String;
     fn renderer(&mut self) -> &mut GlesRenderer;
     fn render(
         &mut self,

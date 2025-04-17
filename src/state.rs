@@ -2,7 +2,7 @@ use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, ffi::OsString, os::fd::AsF
 
 use smithay::{
     backend, desktop::{space::space_render_elements, PopupManager, Space, Window, WindowSurfaceType}, input::{Seat, SeatState}, output::Output, reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
+        calloop::{generic::Generic, EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
@@ -24,6 +24,7 @@ pub struct Tsuki {
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
     pub display_handle: DisplayHandle,
+    pub event_loop: LoopHandle<'static, CalloopData>,
 
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
@@ -42,7 +43,7 @@ pub struct Tsuki {
 }
 
 impl Tsuki {
-    pub fn new(event_loop: &mut EventLoop<CalloopData>, display: Display<Self>) -> Self {
+    pub fn new(event_loop: LoopHandle<'static, CalloopData>, loop_signal: LoopSignal, display: Display<Self>) -> Self {
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
@@ -73,14 +74,12 @@ impl Tsuki {
         // Outputs become views of a part of the Space and can be rendered via Space::render_output.
         let space = Space::default();
 
-        let socket_name = Self::init_wayland_listener(display, event_loop);
-
-        // Get the loop signal, used to stop the event loop
-        let loop_signal = event_loop.get_signal();
+        let socket_name = Self::init_wayland_listener(display, event_loop.clone());
 
         Self {
             start_time,
             display_handle: dh,
+            event_loop,
 
             space,
             loop_signal,
@@ -100,7 +99,7 @@ impl Tsuki {
 
     fn init_wayland_listener(
         display: Display<Tsuki>,
-        event_loop: &mut EventLoop<CalloopData>,
+        loop_handle: LoopHandle<CalloopData>,
     ) -> OsString {
         // Creates a new listening socket, automatically choosing the next available `wayland` socket name.
         let listening_socket = ListeningSocketSource::with_name("wayland-1").unwrap();
@@ -109,8 +108,6 @@ impl Tsuki {
         // Get the name of the listening socket.
         // Clients will connect to this socket.
         let socket_name = listening_socket.socket_name().to_os_string();
-
-        let loop_handle = event_loop.handle();
 
         loop_handle
             .insert_source(listening_socket, move |client_stream, _, state| {
