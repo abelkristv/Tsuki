@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{any::Any, cell::RefCell, rc::Rc, time::Duration};
 
 use smithay::{
     backend::{
@@ -8,7 +8,7 @@ use smithay::{
         winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::{calloop::{timer::Timer, EventLoop, LoopHandle}, winit::platform::pump_events::PumpStatus},
+    reexports::{calloop::{timer::{TimeoutAction, Timer}, EventLoop, LoopHandle}, winit::platform::pump_events::PumpStatus},
     utils::{Point, Rectangle, Transform},
 };
 
@@ -26,8 +26,8 @@ impl Backend for Winit {
         "winit".to_owned()
     }
 
-    fn renderer(&mut self) -> &mut GlesRenderer {
-       self.backend.renderer()
+    fn renderer(&mut self) -> Option<&mut GlesRenderer> {
+       Some(self.backend.renderer())
     }
 
     fn render(
@@ -43,11 +43,23 @@ impl Backend for Winit {
             .unwrap();
         self.backend.submit(Some(&[damage])).unwrap()
     }
+    
+    fn init(&mut self, tsuki: &mut Tsuki) {
+        let _global = self.output.create_global::<Tsuki>(&tsuki.display_handle);
+            tsuki.space.map_output(&self.output, (0, 0));
+            tsuki.output = Some(self.output.clone());
+    }
+    
+    fn as_any (&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl Winit {
     pub fn new(event_loop: LoopHandle<CalloopData>) -> Self {
         let (backend, winit_event_loop) = winit::init().unwrap();
+        log::info!("winit is here somehoww");
+
 
         let mode = Mode {
             size: backend.window_size(),
@@ -78,8 +90,17 @@ impl Winit {
 
         event_loop
             .insert_source(timer, move |_, _, data| {
-                let winit = data.winit.as_mut().unwrap();
-                winit.dispatch(&mut data.tsuki);
+                let mut binding = data.backend.borrow_mut();
+                let binding = binding.as_any().downcast_mut::<Winit>();
+
+                if binding.is_none() {
+                    return TimeoutAction::Drop
+                }
+                // println!("Type id: {:?}", data.backend.borrow_mut().as_any().type_id());
+                // println!("Expected: {:?}", std::any::TypeId::of::<Rc<RefCell<Winit>>>());
+                let backend = binding.unwrap();
+                backend.dispatch(&mut data.tsuki);
+                
                 smithay::reexports::calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16))
             }).unwrap();
         
@@ -89,12 +110,6 @@ impl Winit {
             winit_event_loop,
             damage_tracker
         }
-    }
-
-    pub fn init(&mut self, tsuki: &mut Tsuki) {
-        let _global = self.output.create_global::<Tsuki>(&tsuki.display_handle);
-            tsuki.space.map_output(&self.output, (0, 0));
-            tsuki.output = Some(self.output.clone());
     }
 
     fn dispatch(&mut self, tsuki: &mut Tsuki) {

@@ -1,5 +1,8 @@
+use std::any::Any;
+use std::cell::{Ref, RefCell};
 use std::os::fd::FromRawFd;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow};
@@ -22,7 +25,7 @@ use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::session::Session;
 use smithay::backend::udev::{self, UdevBackend};
 use smithay::desktop::space::SpaceRenderElements;
-use smithay::reexports::calloop::timer::Timer;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay::reexports::input::Libinput;
 use smithay::reexports::rustix::fs::OFlags;
@@ -38,6 +41,7 @@ use crate::{CalloopData, Tsuki};
 use super::Backend;
 
 const SUPPORTED_COLOR_FORMATS: &[Fourcc] = &[Fourcc::Argb8888, Fourcc::Abgr8888];
+
 
 pub struct Tty {
     session: LibSeatSession,
@@ -61,9 +65,13 @@ impl Backend for Tty {
     fn seat_name(&self) -> String {
         self.session.seat()
     }
+    
+    fn as_any (&mut self) -> &mut dyn Any {
+        self
+    }
 
-    fn renderer(&mut self) -> &mut GlesRenderer {
-        &mut self.output_device.as_mut().unwrap().gles
+    fn renderer(&mut self) -> Option<&mut GlesRenderer> {
+        self.output_device.as_mut().map(|output| &mut output.gles)
     }
 
     fn render(
@@ -81,35 +89,83 @@ impl Backend for Tty {
                 elements,
                 [0.1, 0.1, 0.1, 1.],
                 FrameFlags::empty()
-            )
-            .unwrap();
+            );
 
-        assert!(!res.needs_sync());
-        
-        if !res.is_empty {
-            output_device
-                .drm_compositor
-                .queue_frame(())
-                .expect("Failed to queue frame");
-        } else {
-            tsuki.event_loop.insert_source(
-                Timer::from_duration(Duration::from_millis(6)),
-                |_, _, data| {
-                    data.tsuki.redraw(data.tty.as_mut().unwrap());
-                    smithay::reexports::calloop::timer::TimeoutAction::Drop
-                }).unwrap();
+        match res {
+            Ok(res) => {
+                assert!(!res.needs_sync());
+                if !res.is_empty {
+                    output_device
+                        .drm_compositor
+                        .queue_frame(())
+                        .expect("Failed to queue frame");
+                } 
+            },
+            Err(err) => {
+                log::error!("error rendering frame: {err}")
+            }
         }
 
+        tsuki.event_loop.insert_source(
+        Timer::from_duration(Duration::from_millis(6)),
+        |_, _, data| {
+            data.tsuki.redraw(&mut *data.backend.borrow_mut());
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        }).unwrap();
+
+    }
+
+    fn init(&mut self, tsuki: &mut Tsuki) {
+        let backend = UdevBackend::new(self.session.seat()).unwrap();
+        for (device_id, path) in backend.device_list() {
+            if let Err(err) = self.device_added(device_id, path.to_owned(), tsuki) {
+                log::error!("error adding device: {err:?}");
+            }
+        }
+
+        log::info!("init in tty");
+
+        tsuki.event_loop
+            .insert_source(backend, move |event, _, data| {
+                let binding = data.backend.clone();
+                let mut binding = binding.borrow_mut();
+                let tty = binding.as_any().downcast_mut::<Tty>();
+                if tty.is_none() {
+                    log::error!("tty is none, somehow the backend is winit");
+                }
+                let tty = tty.unwrap();
+                let tsuki = &mut data.tsuki;
+
+                match event {
+                    udev::UdevEvent::Added { device_id, path } => {
+                        if let Err(err) = tty.device_added(device_id, path, tsuki) {
+                            log::error!("error adding device: {err:?}");
+                        }
+                        tsuki.redraw(&mut *data.backend.clone().borrow_mut());
+                    },
+                    udev::UdevEvent::Changed { device_id } => tty.device_changed(device_id, tsuki),
+                    udev::UdevEvent::Removed { device_id } => tty.device_removed(device_id, tsuki)
+                }
+            }).unwrap();
+
+        tsuki.redraw(self);
     }
 }
 
 impl Tty {
     pub fn new(event_loop: LoopHandle<'static, CalloopData>) -> Self {
+        // log::info!("im here");
         let (session, notifier) = LibSeatSession::new().unwrap();
+        log::info!("im here");
+
         let seat_name = session.seat();
+
+        log::info!("seat_name : {}", seat_name);
 
         let mut libinput = Libinput::new_with_udev(LibinputSessionInterface::from(session.clone()));
         libinput.udev_assign_seat(&seat_name).unwrap();
+
+        // log::info!("im here");
 
         let input_backend = LibinputInputBackend::new(libinput.clone());
         event_loop
@@ -119,7 +175,10 @@ impl Tty {
 
         event_loop
             .insert_source(notifier, move |event, _, data| {
-                let tty = data.tty.as_mut().unwrap();
+                let mut binding = data.backend.borrow_mut();
+                let tty = binding.as_any().downcast_mut::<Tty>().unwrap();
+
+                    
                 let tsuki = &mut data.tsuki;
 
                 match event {
@@ -132,11 +191,16 @@ impl Tty {
                     },
                     smithay::backend::session::Event::ActivateSession => {
                         if libinput.resume().is_err() {
-                            println!("error resuming libinput");
+                            log::error!("error resuming libinput");
                         }
 
-                        if let Some(output_device) = &tty.output_device {
-                            tty.device_changed(output_device.id, tsuki);
+                        if let Some(output_device) = tty.output_device.as_mut() {
+                            let id = output_device.id;
+                            if let Err(err) = output_device.drm.activate(true) {
+                                log::warn!("Failed to activate DRM device: {err}");
+                            }
+
+                            tty.device_changed(id, tsuki);
                         }
 
                         tsuki.redraw(tty);
@@ -153,33 +217,12 @@ impl Tty {
         }
     }
 
-    pub fn init(&mut self, tsuki: &mut Tsuki) {
-        let backend = UdevBackend::new(&self.session.seat()).unwrap();
-        for (device_id, path) in backend.device_list() {
-            if let Err(err) = self.device_added(device_id, path.to_owned(), tsuki) {
-                println!("error adding device: {err:?}");
-            }
+    pub fn change_virt_term(&mut self, vt: i32) {
+        if let Err(err) = self.session.change_vt(vt) {
+            log::error!("error changing VT: {err}");
         }
-
-        tsuki.event_loop
-            .insert_source(backend, move |event, _, data| {
-                let tty = data.tty.as_mut().unwrap();
-                let tsuki = &mut data.tsuki;
-
-                match event {
-                    udev::UdevEvent::Added { device_id, path } => {
-                        if let Err(err) = tty.device_added(device_id, path, tsuki) {
-                            println!("error adding device: {err:?}");
-                        }
-                        tsuki.redraw(tty);
-                    },
-                    udev::UdevEvent::Changed { device_id } => tty.device_changed(device_id, tsuki),
-                    udev::UdevEvent::Removed { device_id } => tty.device_removed(device_id, tsuki)
-                }
-            }).unwrap();
-
-        tsuki.redraw(self);
     }
+    
 
     fn device_added(
         &mut self,
@@ -188,15 +231,25 @@ impl Tty {
         tsuki: &mut Tsuki
     ) -> anyhow::Result<()> {
         if path != self.primary_gpu_path {
-            println!("skipping non-primary device {path:?}");
+            log::info!("skipping non-primary device {path:?}");
             return Ok(())
         }
 
-        println!("adding device {path:?}");
+        log::info!("adding device {path:?}");
         assert!(self.output_device.is_none());
 
         let open_flags = OFlags::RWMODE | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
-        let fd = self.session.open(&path, open_flags)?;
+        let fd = (0..100).find_map(|i| {
+            match self.session.open(&path, open_flags) {
+                Ok(val) => Some(val),
+                Err(err) => {
+                    log::warn!("resource temporarily unavailable, retrying {i}/100...");
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    None
+                }
+            }
+        }).unwrap();
+        
         let device_fd =  DrmDeviceFd::new(DeviceFd::from(fd));
 
         let (mut drm, drm_notifier) = DrmDevice::new(device_fd.clone(), true)?;
@@ -206,25 +259,28 @@ impl Tty {
         let egl_context = EGLContext::new(&display)?;
 
         let mut gles = unsafe { GlesRenderer::new(egl_context)? };
-        gles.bind_wl_display(&tsuki.display_handle);
+        let _ = gles.bind_wl_display(&tsuki.display_handle);
 
         let drm_compositor = self.create_drm_compositor(&mut drm, &gbm, &gles, tsuki)?;
 
         let token = tsuki
             .event_loop
             .insert_source(drm_notifier, move |event, metadata, data| {
-                let tty = data.tty.as_mut().unwrap();
+                let mut binding = data.backend.borrow_mut();
+                let tty = binding.as_any().downcast_mut::<Tty>().unwrap();
+                let tty = Rc::new(RefCell::new(tty));
                 match event {
                     DrmEvent::VBlank(_crtc) => {
-                        let output_device = tty.output_device.as_mut().unwrap();
+                        let mut binding = tty.borrow_mut();
+                        let output_device = binding.output_device.as_mut().unwrap();
 
                         if let Err(err) = output_device.drm_compositor.frame_submitted() {
                             // print error message 
                         }
 
-                        data.tsuki.redraw(tty);
+                        data.tsuki.redraw( *binding);
                     },
-                    DrmEvent::Error(error) => {println!("DRM error: {error}")}
+                    DrmEvent::Error(error) => {log::error!("DRM error: {error}")}
                 }
             }).unwrap();
 
@@ -236,12 +292,13 @@ impl Tty {
     fn device_changed(&mut self, device_id: dev_t, tsuki: &mut Tsuki) {
         if let Some(output_device) = &self.output_device {
             if output_device.id == device_id {
-                println!("output device changed");
+                log::info!("output device changed");
 
                 let path = output_device.path.clone();
                 self.device_removed(device_id, tsuki);
+
                 if let Err(err) = self.device_added(device_id, path, tsuki) {
-                    println!("error adding device: {err:?}");
+                    log::error!("error adding device: {err:?}");
                 }
             }
         }
@@ -279,12 +336,12 @@ impl Tty {
             .filter_map(|conn| match drm.get_connector(*conn, true) {
                 Ok(info) => Some(info),
                 Err(err) => {
-                    println!("error probing connector: {err}");
+                    log::error!("error probing connector: {err}");
                     None
                 }
             })
             .inspect(|conn| {
-                println!(
+                log::info!(
                     "connector: {} {}, {:?}, {} modes",
                     conn.interface().as_str(),
                     conn.interface_id(),
@@ -297,15 +354,15 @@ impl Tty {
             .for_each(|conn| connector = Some(conn));
 
         let connector = connector.ok_or_else(|| anyhow!("no compatible connector"))?;
-        println!(
+        log::info!(
             "picking connector: {} {}",
             connector.interface().as_str(),
             connector.interface_id()
         );
 
-        let mut mode = connector.modes().get(0);
+        let mut mode = connector.modes().first();
         connector.modes().iter().for_each(|m| {
-            println!("mode: {m:?}");
+            log::info!("mode: {m:?}");
 
             if m.mode_type().contains(ModeTypeFlags::PREFERRED) && mode
                     .map(|curr| curr.vrefresh() < m.vrefresh())
@@ -314,7 +371,7 @@ impl Tty {
             }
         });
         let mode = mode.ok_or_else(|| anyhow!("no mode"))?;
-        println!("picking mode: {mode:?}");
+        log::info!("picking mode: {mode:?}");
 
         let encoders = connector.encoders().iter()
             .filter_map(|enc| drm.get_encoder(*enc).ok());
@@ -327,7 +384,7 @@ impl Tty {
             crtcs.sort_by_cached_key(|crtc| match drm.planes(crtc) {
                 Ok(planes) => -(planes.overlay.len() as isize),
                 Err(err) => {
-                    println!("error probing planes for CRTC: {err}");
+                    log::error!("error probing planes for CRTC: {err}");
                     0
                 }
             });
@@ -338,7 +395,7 @@ impl Tty {
         let surface = all_crtcs.into_iter().find_map(|crtc| match drm.create_surface(crtc, *mode, &[connector.handle()]) {
             Ok(surface) => Some(surface),
             Err(err) => {
-                println!("error creating drm surface: {err}");
+                log::error!("error creating drm surface: {err}");
                 None
             }
         });

@@ -7,7 +7,7 @@ use smithay::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
             Display, DisplayHandle,
-        },
+        }, x11rb::protocol::shape::Op,
     }, utils::{Logical, Point}, wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
@@ -37,13 +37,14 @@ pub struct Tsuki {
     pub seat_state: SeatState<Tsuki>,
     pub data_device_state: DataDeviceState,
     pub popups: PopupManager,
+    pub backend_data: Rc<RefCell<dyn Backend>>,
 
     pub seat: Seat<Self>,
     pub output: Option<Output>
 }
 
 impl Tsuki {
-    pub fn new(event_loop: LoopHandle<'static, CalloopData>, loop_signal: LoopSignal, display: Display<Self>) -> Self {
+    pub fn new(event_loop: LoopHandle<'static, CalloopData>, loop_signal: LoopSignal, display: Display<Self>, backend: Rc<RefCell<dyn Backend>>) -> Self {
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
@@ -75,6 +76,7 @@ impl Tsuki {
         let space = Space::default();
 
         let socket_name = Self::init_wayland_listener(display, event_loop.clone());
+        
 
         Self {
             start_time,
@@ -84,7 +86,7 @@ impl Tsuki {
             space,
             loop_signal,
             socket_name,
-
+            backend_data: backend,
             compositor_state,
             xdg_shell_state,
             shm_state,
@@ -138,25 +140,27 @@ impl Tsuki {
     }
 
     pub fn redraw(&mut self, backend: &mut dyn Backend) {
-        let elements = space_render_elements(
-            backend.renderer(), 
-            [&self.space], 
-            self.output.as_ref().unwrap(), 
-        1.0
-        ).unwrap();
-
-        backend.render(self, &elements);
-
-        let output = self.output.as_ref().unwrap();
-        self.space.elements().for_each(|window| {
-            window.send_frame(
-                output, 
-                self.start_time.elapsed(),
-                Some(Duration::ZERO),
-                |_, _| Some(output.clone()));
-        });
-
-        self.space.refresh();
+        if let Some(renderer) = backend.renderer() {
+            let elements = space_render_elements(
+                renderer, 
+                [&self.space], 
+                self.output.as_ref().unwrap(), 
+            1.0
+            ).unwrap();
+    
+            backend.render(self, &elements);
+    
+            let output = self.output.as_ref().unwrap();
+            self.space.elements().for_each(|window| {
+                window.send_frame(
+                    output, 
+                    self.start_time.elapsed(),
+                    Some(Duration::ZERO),
+                    |_, _| Some(output.clone()));
+            });
+    
+            self.space.refresh();
+        }
     }
 
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {

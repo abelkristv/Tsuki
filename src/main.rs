@@ -1,5 +1,4 @@
 #![allow(irrefutable_let_patterns)]
-
 mod handlers;
 
 mod grabs;
@@ -7,7 +6,7 @@ mod input;
 mod state;
 mod backend;
 
-use std::env;
+use std::{cell::RefCell, env, rc::Rc};
 
 use backend::{Backend, Tty, Winit};
 use smithay::reexports::{
@@ -19,8 +18,7 @@ pub use state::Tsuki;
 pub struct CalloopData {
     tsuki: Tsuki,
     display_handle: DisplayHandle,
-    winit: Option<Winit>,
-    tty: Option<Tty>
+    backend: Rc<RefCell<dyn Backend>>
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,41 +30,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let has_display = env::var_os("WAYLAND_DISPLAY").is_some() || env::var_os("DISPLAY").is_some();
 
+    log::info!("has display: {}", has_display);
+
     let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
-    let mut winit = None;
-    let mut tty = None;
-    let backend: &mut dyn Backend = if has_display {
-        winit = Some(Winit::new(event_loop.handle()));
-        winit.as_mut().unwrap()
+    let mut winit: Option<Rc<RefCell<dyn Backend>>> = None;
+    let mut tty:  Option<Rc<RefCell<dyn Backend>>> = None;
+    let backend: Rc<RefCell<dyn Backend>> = if has_display {
+        winit = Some(Rc::new(RefCell::new(Winit::new(event_loop.handle()))));
+        winit.unwrap()
     } else {
-        tty = Some(Tty::new(event_loop.handle()));
-        tty.as_mut().unwrap()
+        log::info!("running on tty");
+        tty = Some(Rc::new(RefCell::new(Tty::new(event_loop.handle()))));
+        tty.unwrap()
     };
+
+    log::info!("ughghhghg");
 
 
     let display = Display::new().unwrap();
     let display_handle = display.handle();
-    let state = Tsuki::new(event_loop.handle(), event_loop.get_signal(), display);
+    let state = Tsuki::new(event_loop.handle(), event_loop.get_signal(), display, backend.clone());
 
 
     let mut data = CalloopData {
         tsuki: state,
         display_handle,
-        winit,
-        tty
+        backend: backend.clone()
     };
 
-    if let Some(tty) = data.tty.as_mut() {
-        tty.init(&mut data.tsuki);
-    }
-    if let Some(winit) = data.winit.as_mut() {
-        winit.init(&mut data.tsuki);
-    }
+    backend.clone().borrow_mut().init(&mut data.tsuki);
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
     let arg = args.next();
-    std::env::set_var("WAYLAND_DISPLAY", "wayland-1");
+    std::env::set_var("WAYLAND_DISPLAY", &data.tsuki.socket_name);
 
 
     match (flag.as_deref(), arg) {
@@ -78,8 +75,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    log::info!("Bisa sampai sini");
     event_loop.run(None, &mut data, move |data| {
         // Tsuki is running
+        log::info!("sempet jalan");
         data.display_handle.flush_clients().unwrap();
     })?;
 

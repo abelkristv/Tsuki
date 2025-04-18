@@ -1,20 +1,23 @@
+
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     input::{
-        keyboard::{FilterResult, Keysym},
+        keyboard::{keysyms, FilterResult, Keysym},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
 };
 
-use crate::state::Tsuki;
+use crate::{backend::{Backend, Tty}, state::Tsuki};
+use std::{cell::RefCell, mem, rc::Rc};
 
 enum TsukiInputAction {
     Quit,
+    ChangeVirtTerminal(i32)
 }
 
 impl Tsuki {
@@ -34,6 +37,10 @@ impl Tsuki {
                         Keysym::Q if modifier_state.ctrl && modifier_state.shift => {
                             FilterResult::Intercept(TsukiInputAction::Quit)
                         },
+                        keysym if (u32::from(Keysym::XF86_Switch_VT_1)..=u32::from(Keysym::XF86_Switch_VT_12)).contains(&(keysym.raw()))=> {
+                            let vt = (keysym.raw() - u32::from(Keysym::XF86_Switch_VT_1) + 1) as i32;
+                            FilterResult::Intercept(TsukiInputAction::ChangeVirtTerminal(vt))
+                        }
                         _ => FilterResult::Forward,
                     } 
                 );
@@ -42,6 +49,9 @@ impl Tsuki {
                     match action {
                         TsukiInputAction::Quit => {
                             self.loop_signal.stop()
+                        },
+                        TsukiInputAction::ChangeVirtTerminal(vt) => {
+                            self.backend_data.clone().borrow_mut().as_any().downcast_mut::<Tty>().unwrap().change_virt_term(vt);
                         }
                     }
                 }
@@ -154,7 +164,7 @@ impl Tsuki {
                 let pointer = self.seat.get_pointer().unwrap();
                 pointer.axis(self, frame);
                 pointer.frame(self);
-            }
+            },
             _ => {}
         }
     }
