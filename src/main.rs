@@ -44,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tty.unwrap()
     };
 
-    log::info!("ughghhghg");
 
 
     let display = Display::new().unwrap();
@@ -75,10 +74,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    log::info!("Bisa sampai sini");
     event_loop.run(None, &mut data, move |data| {
         // Tsuki is running
-        log::info!("sempet jalan");
         data.display_handle.flush_clients().unwrap();
     })?;
 
