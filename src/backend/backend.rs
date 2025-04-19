@@ -2,7 +2,7 @@ use std::any::Any;
 
 use smithay::{backend::renderer::{element::surface::WaylandSurfaceRenderElement, gles::GlesRenderer}, desktop::space::SpaceRenderElements};
 
-use crate::Tsuki;
+use crate::{state::OutputRenderElements, Tsuki};
 
 pub trait Backend: Any {
     fn seat_name(&self) -> String;
@@ -10,7 +10,7 @@ pub trait Backend: Any {
     fn render(
         &mut self,
         tsuki: &mut Tsuki,
-        elements: &[SpaceRenderElements<GlesRenderer,
+        elements: &[OutputRenderElements<GlesRenderer,
             WaylandSurfaceRenderElement<GlesRenderer>>]
     );
     fn init(&mut self, tsuki: &mut Tsuki); 

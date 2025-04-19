@@ -1,14 +1,14 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, ffi::OsString, os::fd::AsFd, rc::Rc, sync::Arc, time::Duration};
 
 use smithay::{
-    backend, desktop::{space::space_render_elements, PopupManager, Space, Window, WindowSurfaceType}, input::{Seat, SeatState}, output::Output, reexports::{
+    backend::{self, drm::output::DrmOutputRenderElements, renderer::{element::{solid::SolidColorRenderElement, Kind}, utils::CommitCounter, ImportAll}}, desktop::{space::{space_render_elements, SpaceRenderElements}, PopupManager, Space, Window, WindowSurfaceType}, input::{Seat, SeatState}, output::Output, reexports::{
         calloop::{generic::Generic, EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
             Display, DisplayHandle,
         }, x11rb::protocol::shape::Op,
-    }, utils::{Logical, Point}, wayland::{
+    }, render_elements, utils::{Logical, Point}, wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
@@ -147,6 +147,30 @@ impl Tsuki {
                 self.output.as_ref().unwrap(), 
             1.0
             ).unwrap();
+
+            let mut elements: Vec<_> = elements
+                .into_iter()
+                .map(OutputRenderElements::from)
+                .collect();
+
+            elements.insert(
+                0, 
+                OutputRenderElements::Pointer(SolidColorRenderElement::new(
+                    smithay::backend::renderer::element::Id::new(),
+                    smithay::utils::Rectangle {
+                        loc: self
+                            .seat
+                            .get_pointer()
+                            .unwrap()
+                            .current_location()
+                            .to_physical_precise_round(1.),
+                        size: (16, 16).into()
+                    }, 
+                    CommitCounter::default(), 
+                    [1., 0.5, 0., 1.],
+                    Kind::Cursor
+                ))
+            );
     
             backend.render(self, &elements);
     
@@ -172,6 +196,11 @@ impl Tsuki {
     }
 }
 
+render_elements! {
+    pub OutputRenderElements<R, E> where R: ImportAll;
+    Space=SpaceRenderElements<R, E>,
+    Pointer = SolidColorRenderElement,
+}
 #[derive(Default)]
 pub struct ClientState {
     pub compositor_state: CompositorClientState,

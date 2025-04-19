@@ -12,7 +12,7 @@ use smithay::{
     utils::{Point, Rectangle, Transform},
 };
 
-use crate::{backend::Backend, state::Tsuki, CalloopData};
+use crate::{backend::Backend, state::{OutputRenderElements, Tsuki}, CalloopData};
 
 pub struct Winit {
     output: Output,
@@ -33,7 +33,7 @@ impl Backend for Winit {
     fn render(
         &mut self,
         tsuki: &mut Tsuki,
-        elements: &[smithay::desktop::space::SpaceRenderElements<GlesRenderer,
+        elements: &[OutputRenderElements<GlesRenderer,
             WaylandSurfaceRenderElement<GlesRenderer>>]
     ) {
         let size = self.backend.window_size();

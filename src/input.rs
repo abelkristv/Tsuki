@@ -1,12 +1,11 @@
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, GesturePinchUpdateEvent, InputBackend, InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent
     },
     input::{
         keyboard::{keysyms, FilterResult, Keysym},
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
+        pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
@@ -14,6 +13,7 @@ use smithay::{
 
 use crate::{backend::{Backend, Tty}, state::Tsuki};
 use std::{cell::RefCell, mem, rc::Rc};
+use smithay::backend::input::PointerMotionEvent;
 
 enum TsukiInputAction {
     Quit,
@@ -56,7 +56,36 @@ impl Tsuki {
                     }
                 }
             }
-            InputEvent::PointerMotion { .. } => {}
+            InputEvent::PointerMotion { event, .. } => {
+                let serial = SERIAL_COUNTER.next_serial();
+
+                let pointer = self.seat.get_pointer().unwrap();
+                let mut pointer_location = pointer.current_location();
+
+                pointer_location += event.delta();
+
+                let output = self.space.outputs().next().unwrap();
+                let output_geo = self.space.output_geometry(output).unwrap();
+
+                pointer_location.x = pointer_location.x.clamp(0., output_geo.size.w as f64);
+                pointer_location.y = pointer_location.y.clamp(0., output_geo.size.h as f64);
+
+                let under = self.surface_under(pointer_location);
+                pointer.motion(
+                    self, 
+                    under.clone(),
+                    &MotionEvent { location: pointer_location, serial, time: event.time_msec() });
+
+                pointer.relative_motion(
+                    self, 
+                    under, 
+                &RelativeMotionEvent {
+                    delta: event.delta(),
+                    delta_unaccel: event.delta_unaccel(),
+                    utime: event.time()
+                });
+
+            }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output = self.space.outputs().next().unwrap();
 

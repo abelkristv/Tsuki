@@ -36,6 +36,7 @@ use smithay::reexports::drm::control::connector::{
 };
 use smithay::backend::allocator::gbm::GbmBufferFlags;
 
+use crate::state::OutputRenderElements;
 use crate::{CalloopData, Tsuki};
 
 use super::Backend;
@@ -77,7 +78,7 @@ impl Backend for Tty {
     fn render(
         &mut self,
         tsuki: &mut crate::Tsuki,
-        elements: &[SpaceRenderElements<GlesRenderer,
+        elements: &[OutputRenderElements<GlesRenderer,
             WaylandSurfaceRenderElement<GlesRenderer>>]
     ) {
         let output_device = self.output_device.as_mut().unwrap();
