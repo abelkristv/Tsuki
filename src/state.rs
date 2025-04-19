@@ -1,8 +1,8 @@
-use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, ffi::OsString, os::fd::AsFd, rc::Rc, sync::Arc, time::Duration};
+use std::{cell::{RefCell, RefMut}, ffi::OsString, os::fd::AsFd, rc::Rc, sync::Arc, time::Duration};
 
 use smithay::{
     backend::{self, drm::output::DrmOutputRenderElements, renderer::{element::{solid::SolidColorRenderElement, Kind}, utils::CommitCounter, ImportAll}}, desktop::{space::{space_render_elements, SpaceRenderElements}, PopupManager, Space, Window, WindowSurfaceType}, input::{Seat, SeatState}, output::Output, reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction},
+        calloop::{generic::Generic, timer::Timer, EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
@@ -40,7 +40,9 @@ pub struct Tsuki {
     pub backend_data: Rc<RefCell<dyn Backend>>,
 
     pub seat: Seat<Self>,
-    pub output: Option<Output>
+    pub output: Option<Output>,
+    pub redraw_queued: bool,
+    pub waiting_for_vblank: bool
 }
 
 impl Tsuki {
@@ -95,7 +97,9 @@ impl Tsuki {
             data_device_state,
             popups,
             seat,
-            output: None
+            output: None,
+            redraw_queued: false,
+            waiting_for_vblank: false
         }
     }
 
@@ -139,7 +143,28 @@ impl Tsuki {
         socket_name
     }
 
+    pub fn queue_redraw(&mut self) {
+        if self.redraw_queued || self.waiting_for_vblank {
+            return;
+        }
+
+        self.redraw_queued = true;
+
+        self.event_loop
+            .insert_source(Timer::immediate(), |_, _, data| {
+                let binding = data.backend.clone();
+                let mut backend: RefMut<dyn Backend> = binding.borrow_mut();
+                data.tsuki.redraw(&mut *backend);
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            })
+            .unwrap();
+    }
+
     pub fn redraw(&mut self, backend: &mut dyn Backend) {
+        assert!(self.redraw_queued);
+        assert!(!self.waiting_for_vblank);
+        self.redraw_queued = false;
+        
         if let Some(renderer) = backend.renderer() {
             let elements = space_render_elements(
                 renderer, 

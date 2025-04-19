@@ -128,6 +128,8 @@ impl Winit {
                 },
                 WinitEvent::CloseRequested => {tsuki.loop_signal.stop();}, 
                 WinitEvent::Input(event) => tsuki.process_input_event(event),
+                WinitEvent::Focus(_) => (),
+                WinitEvent::Redraw => tsuki.queue_redraw(),
                 _ => ()
             });
         
@@ -137,6 +139,6 @@ impl Winit {
         } 
 
         self.backend.bind().unwrap();
-        tsuki.redraw(self);
+        tsuki.queue_redraw();
     }
 }

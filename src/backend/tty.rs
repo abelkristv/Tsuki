@@ -101,6 +101,7 @@ impl Backend for Tty {
                         .queue_frame(())
                         .expect("Failed to queue frame");
                 } 
+                tsuki.waiting_for_vblank = true;
             },
             Err(err) => {
                 log::error!("error rendering frame: {err}")
@@ -110,7 +111,7 @@ impl Backend for Tty {
         tsuki.event_loop.insert_source(
         Timer::from_duration(Duration::from_millis(6)),
         |_, _, data| {
-            data.tsuki.redraw(&mut *data.backend.borrow_mut());
+            data.tsuki.queue_redraw();
             smithay::reexports::calloop::timer::TimeoutAction::Drop
         }).unwrap();
 
@@ -142,14 +143,14 @@ impl Backend for Tty {
                         if let Err(err) = tty.device_added(device_id, path, tsuki) {
                             log::error!("error adding device: {err:?}");
                         }
-                        tsuki.redraw(&mut *data.backend.clone().borrow_mut());
+                        tsuki.queue_redraw();
                     },
                     udev::UdevEvent::Changed { device_id } => tty.device_changed(device_id, tsuki),
                     udev::UdevEvent::Removed { device_id } => tty.device_removed(device_id, tsuki)
                 }
             }).unwrap();
 
-        tsuki.redraw(self);
+        tsuki.queue_redraw();
     }
 }
 
@@ -204,7 +205,7 @@ impl Tty {
                             tty.device_changed(id, tsuki);
                         }
 
-                        tsuki.redraw(tty);
+                        tsuki.queue_redraw();
                     }
                 }
             }).unwrap();
@@ -278,8 +279,8 @@ impl Tty {
                         if let Err(err) = output_device.drm_compositor.frame_submitted() {
                             // print error message 
                         }
-
-                        data.tsuki.redraw( *binding);
+                        data.tsuki.waiting_for_vblank = false;
+                        data.tsuki.queue_redraw();
                     },
                     DrmEvent::Error(error) => {log::error!("DRM error: {error}")}
                 }

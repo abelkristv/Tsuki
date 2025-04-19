@@ -84,6 +84,7 @@ impl Tsuki {
                     delta_unaccel: event.delta_unaccel(),
                     utime: event.time()
                 });
+                self.queue_redraw();
 
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
@@ -109,6 +110,7 @@ impl Tsuki {
                     },
                 );
                 pointer.frame(self);
+                self.queue_redraw();
             }
             InputEvent::PointerButton { event, .. } => {
                 let pointer = self.seat.get_pointer().unwrap();
